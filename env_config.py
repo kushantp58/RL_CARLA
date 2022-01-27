@@ -22,7 +22,7 @@ params = {
     # maximum timesteps per episode
     'max_time_episode': MAX_EPISODE_STEPS,
     # desired speed (m/s)
-    'desired_speed': 15,
+    'desired_speed': 12,
     # maximum times to spawn ego vehicle
     'max_ego_spawn_times': 100,
 }
