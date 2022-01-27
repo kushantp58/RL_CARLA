@@ -1,10 +1,11 @@
 import argparse
 import numpy as np
-from parl.utils import logger, tensorboard, ReplayMemory
+from parl.utils import csv_logger, logger, tensorboard, ReplayMemory
 from env_utils import ParallelEnv, LocalEnv
-# from torch_base import TorchModel, TorchSAC, TorchAgent  # Choose base wrt which deep-learning framework you are using
+#from torch_base import TorchModel, TorchSAC, TorchAgent  # Choose base wrt which deep-learning framework you are using
 from paddle_base import PaddleModel, PaddleSAC, PaddleAgent
 from env_config import EnvConfig
+from parl.utils import CSVLogger
 
 WARMUP_STEPS = 2e3
 EVAL_EPISODES = 3
@@ -36,6 +37,9 @@ def run_evaluate_episodes(agent, env, eval_episodes):
 def main():
     logger.info("-----------------Carla_SAC-------------------")
     logger.set_dir('./{}_train'.format(args.env))
+
+    csv_logger = CSVLogger('./{}_train/log.csv'.format(args.env))
+
 
     # Parallel environments for training
     train_envs_params = EnvConfig['train_envs_params']
@@ -69,6 +73,9 @@ def main():
     total_steps = 0
     last_save_steps = 0
     test_flag = 0
+    st = 0.1
+    ft = 0.1
+    sr = 0
 
     obs_list = env_list.reset()
 
@@ -76,7 +83,7 @@ def main():
         # Train episode
         if rpm.size() < WARMUP_STEPS:
             action_list = [
-                np.random.uniform(-1, 1, size=action_dim)
+                np.random.uniform(-50, 50, size=action_dim)
                 for _ in range(env_num)
             ]
         else:
@@ -84,17 +91,24 @@ def main():
         next_obs_list, reward_list, done_list, info_list = env_list.step(
             action_list)
 
+
         # Store data in replay memory
         for i in range(env_num):
             rpm.append(obs_list[i], action_list[i], reward_list[i],
                        next_obs_list[i], done_list[i])
-
+            if(done_list[i]==True):
+                st = 0
+            else:
+                ft = 0
+                
+                       
         obs_list = env_list.get_obs()
         total_steps = env_list.total_steps
         # Train agent after collecting sufficient data
         if rpm.size() >= WARMUP_STEPS:
             batch_obs, batch_action, batch_reward, batch_next_obs, batch_terminal = rpm.sample_batch(
                 BATCH_SIZE)
+            #agent.learn(batch_obs, batch_action, batch_reward, batch_next_obs,batch_terminal)
             agent.learn(batch_obs, batch_action, batch_reward, batch_next_obs,
                         batch_terminal)
 
@@ -108,12 +122,15 @@ def main():
         if (total_steps + 1) // args.test_every_steps >= test_flag:
             while (total_steps + 1) // args.test_every_steps >= test_flag:
                 test_flag += 1
-            avg_reward = run_evaluate_episodes(agent, eval_env, EVAL_EPISODES)
+            avg_reward = run_evaluate_episodes(agent, eval_env, EVAL_EPISODES)    
+            sr = st/(st+ft)
+            csv_logger.log_dict({'Epochs': total_steps,'Evaluation over episodes':EVAL_EPISODES,'Average Reward per episode': avg_reward,'success rate':sr})
             tensorboard.add_scalar('eval/episode_reward', avg_reward,
                                    total_steps)
             logger.info(
                 'Total steps {}, Evaluation over {} episodes, Average reward: {}'
                 .format(total_steps, EVAL_EPISODES, avg_reward))
+            
 
 
 if __name__ == "__main__":
